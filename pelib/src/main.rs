@@ -45,7 +45,7 @@ pub fn FillStructureFromMemory<T>(dest: &mut T,src: *const c_void,prochandle: *m
             bytestoread,
             &mut byteswritten,
         );
-
+        println!("array being filled: {:x?}",&buffer);
         FillStructureFromArray(dest, &buffer);
 
         return byteswritten;
@@ -53,8 +53,88 @@ pub fn FillStructureFromMemory<T>(dest: &mut T,src: *const c_void,prochandle: *m
 }
 
 
+pub fn GetHeadersSize(buffer:&Vec<u8>) -> usize{
+    if buffer.len()<2{ panic!("file size is less than 2")}
+    let magic =&buffer[0..2];
+    let magicstring =String::from_utf8_lossy(magic);
+    if magicstring=="MZ"{
+        if buffer.len()<64{ panic!("file size is less than 64")}
+        let mut ntoffset =&buffer[60..64];
+        unsafe{
+        let offset = std::ptr::read(ntoffset.as_ptr() as *const i32) as usize;
+        
+        
+        let bitversion =&buffer[offset+4+20..offset+4+20+2];
+        let bit =std::ptr::read(bitversion.as_ptr() as *const u16);
+        if bit==523{
+            let index = offset + 24+60;
+        let  headerssize =&buffer[index as usize..index as usize+4];
+        let size = std::ptr::read(headerssize.as_ptr() as *const i32);
+        println!("size of headers: {:x?}",size);   
+        return size as usize;
+
+        }
+        else if bit==267{
+        let index = offset + 24+60;
+        let  headerssize =&buffer[index as usize..index as usize+4];
+        let size = std::ptr::read(headerssize.as_ptr() as *const i32);
+        println!("size of headers: {:x?}",size);   
+        return size as usize;
+        }
+        else{
+            panic!("invalid bit version");
+        }
+    }
+        
+    }
+    else{
+        panic!("its not a pe file");
+    }
+}
+
+
+pub fn GetImageSize(buffer:&Vec<u8>) -> usize{
+    if buffer.len()<2{ panic!("file size is less than 2")}
+    let magic =&buffer[0..2];
+    let magicstring =String::from_utf8_lossy(magic);
+    if magicstring=="MZ"{
+        if buffer.len()<64{ panic!("file size is less than 64")}
+        let mut ntoffset =&buffer[60..64];
+        unsafe{
+        let offset = std::ptr::read(ntoffset.as_ptr() as *const i32) as usize;
+        
+        
+        let bitversion =&buffer[offset+4+20..offset+4+20+2];
+        let bit =std::ptr::read(bitversion.as_ptr() as *const u16);
+        if bit==523{
+            let index = offset + 24+60-4;
+        let  headerssize =&buffer[index as usize..index as usize+4];
+        let size = std::ptr::read(headerssize.as_ptr() as *const i32);
+        println!("size of image: {:x?}",size);   
+        return size as usize;
+
+        }
+        else if bit==267{
+        let index = offset + 24+60-4;
+        let  headerssize =&buffer[index as usize..index as usize+4];
+        let size = std::ptr::read(headerssize.as_ptr() as *const i32);
+        println!("size of image: {:x?}",size);   
+        return size as usize;
+        }
+        else{
+            panic!("invalid bit version");
+        }
+    }
+        
+    }
+    else{
+        panic!("its not a pe file");
+    }
+}
+
 
 fn main() {
+
     use std::fs::File;
     let filepath = r#"D:\red teaming tools\calc2.exe"#;
     let mut buffer = Vec::new();
@@ -62,6 +142,9 @@ fn main() {
     let mut fd = File::open(filepath).unwrap();
     fd.read_to_end(&mut buffer);
 
+
+    GetHeadersSize(&buffer);
+    GetImageSize(&buffer);
     //println!("{:#?}", String::from_utf8_lossy(&buffer[0..2]));
 
     unsafe {
@@ -83,11 +166,65 @@ fn main() {
         FillStructureFromMemory(&mut ntheader, ((baseptr as isize)+dosheader.e_lfanew as isize) as *const c_void, GetCurrentProcess());
         println!("signature: {:x?}",ntheader.Signature);
 
-        println!("number of sections: {:x?}",ntheader.FileHeader.NumberOfSections);
+        println!("sections count: {}",ntheader.FileHeader.NumberOfSections);
+        
+        println!("export directory: {:x?}",ntheader.OptionalHeader.ExportTable);
+        
+        println!("import directory: {:x?}",ntheader.OptionalHeader.ImportTable);
 
-        VirtualFree(baseptr, 0, 0x00008000);
+       
+        let mut section:Vec<IMAGE_SECTION_HEADER> = vec![IMAGE_SECTION_HEADER::default();ntheader.FileHeader.NumberOfSections as usize];
+
+        
+
+       for i in 0..section.len(){
+            FillStructureFromMemory(&mut section[i]  , 
+            ((baseptr as isize)+dosheader.e_lfanew as isize+
+                std::mem::size_of_val(&ntheader) as isize + (i as isize * std::mem::size_of::<IMAGE_SECTION_HEADER>() as isize)) as *const c_void,
+                 GetCurrentProcess());
+        }
+        println!("{:#?}",section[1].getsecname());
+
+
+        /*if ntheader.OptionalHeader.ImportTable.Size!=0{
+           //let firstimportptr = baseptr as isize + ntheader.OptionalHeader.ImportTable.VirtualAddress as isize;
+           // println!("{:x?}",firstimportptr);
+            let mut import = IMAGE_IMPORT_DESCRIPTOR::default();
+            FillStructureFromMemory(&mut import,
+                 ((baseptr as isize)+(ntheader.OptionalHeader.ImportTable.VirtualAddress as isize)) as *const c_void,
+                  GetCurrentProcess());
+            println!("{:x?}",import);
+        }*/
+
+
+        let freeres = VirtualFree(baseptr, 0, 0x00008000);
     }
 }
+
+
+
+#[derive(Clone,Default,Debug)]
+#[repr(C)]
+pub  struct IMAGE_SECTION_HEADER{
+           Name:[u8;8],
+            VirtualSize: u32,
+           VirtualAddress: u32,
+         SizeOfRawData: u32,
+          PointerToRawData: u32,
+          PointerToRelocations: u32,
+          PointerToLinenumbers: u32,
+           NumberOfRelocations: u16,
+           NumberOfLinenumbers: u16,
+          Characteristics: u32
+        
+    }
+
+impl IMAGE_SECTION_HEADER{
+    fn getsecname(&mut self)-> String {
+         String::from_utf8_lossy(&self.Name).to_string()
+    }
+}
+
 
 #[repr(C)]
 pub union chars_or_originalfirstthunk {
