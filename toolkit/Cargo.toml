@@ -1,0 +1,22 @@
+[package]
+name = "toolkit"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+
+[dependencies]
+winapi = {version = "0.3.9" , features= [
+
+    "psapi","memoryapi","errhandlingapi","processthreadsapi",
+    "handleapi", "synchapi","minwinbase","winnt","winuser","tlhelp32",
+    "dpapi","wlanapi","winerror","ktmw32","processenv","fileapi"
+]}
+reqwest = {version="0.11.18", features = [
+
+    "blocking","json","cookies"
+]}
+hex = "0.4.3"
+ntapi ="0.4.1"
+
