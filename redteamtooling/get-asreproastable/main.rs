@@ -69,7 +69,7 @@ fn main() {
         &domain1.dn,
         Scope::Subtree,
         "(&(objectclass=user)(userAccountControl:1.2.840.113556.1.4.803:=4194304))",
-        vec!["cn", "objectsid", "serviceprincipalname"],
+        vec!["cn", "objectsid", "dn"],
     );
 
     if searchresult.is_err() {
